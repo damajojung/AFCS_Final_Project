@@ -3,30 +3,28 @@ library(fpp3)
 library(tidyverse)
 library(dplyr)
 
+
 ### Load Data
-cal = read.csv("calendar.csv", header = T)
-stval = read.csv("sales_train_validation.csv", header = T)
-samp_sub = read.csv("sample_submission.csv", header = T)
-price = read.csv("sell_prices.csv", header = T)
-steval = read.csv("sales_train_evaluation.csv", header = T)
+cal = read.csv("calendar_afcs2021.csv", header = T)
+train = read.csv("sales_train_validation_afcs2021.csv", header = T)
+samp_sub = read.csv("sample_submission_afcs2021.csv", header = T)
+price = read.csv("sell_prices_afcs2021.csv", header = T)
+steval = read.csv("sales_test_validation_afcs2021.csv", header = T)
 
 # Pivot longer
-stval_long = pivot_longer(stval, cols =  7:1919, names_to = "d", values_to = "sales")
+train_long = pivot_longer(train, cols =  2:1914, names_to = "d", values_to = "sales")
 
 # Extract time information
 dates_df = as_tibble(cal[c("date", "d")])
 
 # Merge the two data frames
-merge_df = merge(dates_df, stval_long, by = "d")
+merge_df = merge(dates_df, train_long, by = "d")
 
 # Change the date from character to date format
-merge_df["date"] = as.Date(merge_df$date, format = "%Y-%m-%d")
+merge_df["date"] = as.Date(merge_df$date, format = "%m/%d/%Y")
 
 # Convert Data frame to tsibble
-merge_ts = merge_df %>%  as_tsibble(index = "date", key = c("d", "id", "item_id")) # does not work yet - memory issues 
-
-# Plot
-merge_df %>% autoplot(sales)
+merge_ts = merge_df %>%  as_tsibble(index = "date", key = c("d", "id")) # does not work yet - memory issues 
 
 
 #######
