@@ -6,6 +6,9 @@ library(dplyr)
 library(tools)
 library(gridExtra)
 
+load("Data_First_Steps.rdata")
+
+########## Data load and preprocessing
 
 ### Load Data
 cal = read.csv("calendar_afcs2021.csv", header = T)
@@ -38,6 +41,9 @@ merge_ts = merge_df %>%  as_tsibble(index = "date", key = c('id'))
 
 load("Data_First_Steps.RData") # Load everything
 
+######################## 
+# Forecasting
+######################## 
 
 
 #######
@@ -46,23 +52,123 @@ load("Data_First_Steps.RData") # Load everything
 
 ####################### TS
 
-merge_ts %>% filter(id == 'FOODS_3_001_TX_3_validation') %>% select(date, sales) %>% autoplot(sales)
+merge_ts %>% filter(id == 'FOODS_3_007_TX_3_validation') %>% select(date, sales) %>% autoplot(sales)
 
-Pfood1 = merge_ts %>% filter(id == 'FOODS_3_001_TX_3_validation') %>% select(date, sales)
+dat = merge_ts %>% filter(id == 'FOODS_3_007_TX_3_validation') %>% select(date, sales)
 
 ########## 
-##Playing around with Naive Methods
+## Playing around with Naive Methods - only food 1
 ########## 
 
-f1_fit = food1  %>% model('Seasonal_naive' = SNAIVE(sales),
-                                                           'Naive' = NAIVE(sales),
-                                                           'Drift' = RW(sales ~ drift()),
-                                                           'Mean' = MEAN(sales))
+naive_fit = dat  %>% model('Seasonal_naive' = SNAIVE(sales),
+                        'Naive' = NAIVE(sales),
+                        'Drift' = RW(sales ~ drift()),
+                        'Mean' = MEAN(sales))
 
-f1_fc = f1_fit %>% forecast(h = '28 days')
+naive_fc = naive_fit %>% forecast(h = '28 days')
 
 
-f1_fc %>% autoplot(food1, level = NULL) + labs(title = "Food one", y = "Sold units") + guides(colour = guide_legend(title = 'Forecast'))
+naive_fc %>% autoplot(dat, level = NULL) + labs(title = "Food one", y = "Sold units") + guides(colour = guide_legend(title = 'Forecast'))
+
+########## 
+## STL
+########## 
+
+dat %>% model(stl = STL(sales ~ season(window = 9), robust = T)) %>% components() %>%   autoplot()
+
+########## 
+## TSLM
+########## 
+
+tslm_fit = dat %>% model(tslm = TSLM(sales ~ trend()))
+tslm_fc = forecast(tslm_fit, h = 28)
+tslm_fc %>%  autoplot()
+tslm_fc %>%  autoplot(dat)
+
+
+##########
+## Multiplicative and Additive ETS
+##########
+
+ets_fit <- dat %>% model(multiplicative = ETS(sales ~ error("M") + trend("A") + season("M")),
+                         additive = ETS(sales ~ error("A") + trend("A") + season("A")))
+
+ets_fc <- ets_fit %>% forecast(h = "28 days")
+ets_fc %>% autoplot()
+
+ets_fc %>% autoplot(dat, level = NULL) 
+
+##########
+## ARIMA
+##########
+
+arima_fit <- dat %>% 
+  model(arima100 = ARIMA(sales ~ pdq(1,0,0)),
+        arima200 = ARIMA(sales ~ pdq(2,0,0)),
+        arima001 = ARIMA(sales ~ pdq(0,0,1)),
+        arima002 = ARIMA(sales ~ pdq(0,0,2)),
+        arima110 = ARIMA(sales ~ pdq(1,1,0)),
+        arima011 = ARIMA(sales ~ pdq(0,1,1)),
+        arima210 = ARIMA(sales ~ pdq(2,1,0)),
+        arima012 = ARIMA(sales ~ pdq(0,1,2)),
+        stepwise = ARIMA(sales),
+        search = ARIMA(sales, stepwise=FALSE, approximation = FALSE))
+
+glance(arima_fit) %>% arrange(AICc) %>% select(.model:BIC)
+
+arima_fit = dat %>% model(arima012 = ARIMA(sales ~ pdq(0,1,2)))
+
+arima_fc =  arima_fit %>% forecast(h = "28 days")
+
+arima_fc %>% autoplot()
+
+##########
+## Harmonic Regression
+##########
+
+har_fit = dat %>% model(k1 = TSLM(sales ~ trend() + fourier(K=1)),
+                          k2 = TSLM(sales ~ trend() + fourier(K=2)),
+                          k3 = TSLM(sales ~ trend() + fourier(K=3)))
+
+
+glance(har_fit) %>% arrange(AICc) %>% select(.model:BIC)
+
+har_fit = dat %>% model(k1 = TSLM(sales ~ trend() + fourier(K=1)))
+
+har_fc = har_fit %>% forecast(h = "28 days")
+
+har_fc %>% autoplot()
+
+##########
+## Croston - Rather predicting a mean - does not look very good
+##########
+
+cros_fit = dat %>%model(CROSTON(sales)) 
+
+cros_fc = cros_fit %>% forecast(h = 28)
+
+cros_fc %>% autoplot(dat)
+
+##########
+## Neural Network
+##########
+
+NN_fit = dat %>% model(NNETAR(sqrt(sales))) 
+
+NN_fc = NN_fit %>% forecast(h = 28) 
+
+NN_fc %>% autoplot()
+
+NN_fc %>% autoplot(dat) + labs(x = "Days", y = "Counts", title = "Dayily Sales Prediction")
+
+
+
+###### All foods
+
+fall_fit = merge_ts  %>% model('Seasonal_naive' = SNAIVE(sales))
+
+fall_fc = fall_fit %>% forecast(h = '28 days')
+
 
 
 ########## 
@@ -70,7 +176,6 @@ f1_fc %>% autoplot(food1, level = NULL) + labs(title = "Food one", y = "Sold uni
 ########## 
 
 food1 %>% gg_tsdisplay(difference(sales), plot_type = "partial") # With one difference the mean becomes 0, but does not look like WN
-
 
 
 
